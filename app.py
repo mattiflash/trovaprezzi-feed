@@ -94,7 +94,7 @@ def admin_home():
 
     warning_html = ""
     if not brands and not collections:
-            warning_html = """
+        warning_html = """
         <p style="color:#b00; font-weight:bold;">
             Attenzione: non sono riuscito a caricare brand e collezioni da Shopify in questo momento.
             Puoi ricaricare la pagina o procedere con filtri manuali.
