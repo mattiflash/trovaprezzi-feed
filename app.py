@@ -392,7 +392,7 @@ def generate_feed():
     <p>Lead time minimo usato: {escape(lead_time_min_text)}</p>
     <p>Lead time massimo usato: {escape(lead_time_max_text)}</p>
     <p>Range prezzo usati: {escape(price_ranges_text)}</p>
-    <p><a href="/feed/{filename}" target="_blank">Apri feed pubblico di questa generazione</a></p>
+    <p><a href="/feed/{filename}" target="_blank">Apri feed appena generato</a></p>
     <p><a href="/feed/latest-feed.txt" target="_blank">Apri ultimo feed pubblico</a></p>
     <p><a href="/">Torna indietro</a></p>
     """
