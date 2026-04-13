@@ -3,6 +3,7 @@ from flask import Flask, abort, request
 from markupsafe import escape
 import time
 import re
+from datetime import datetime
 
 from feed_exporter import get_token, get_products, build_shopify_query, build_feed
 from config_schema import DEFAULT_FILTERS
@@ -10,7 +11,7 @@ from config_schema import DEFAULT_FILTERS
 app = Flask(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
-OUTPUT_FILE = BASE_DIR / "trovaprezzi-feed.txt"
+LAST_FEED_FILE = BASE_DIR / "latest-feed.txt"
 
 # Cache semplice in memoria per evitare di rileggere Shopify a ogni refresh
 FILTER_CACHE = {
@@ -37,10 +38,6 @@ def is_valid_price_input(value):
 
 
 def get_filter_options():
-    """
-    Recupera brand e collezioni da Shopify con una sola lettura.
-    Usa una cache semplice per velocizzare l'apertura della home.
-    """
     now = time.time()
 
     if (
@@ -108,6 +105,10 @@ def admin_home():
         """
         for title, handle in collections
     )
+
+    latest_link_html = ""
+    if LAST_FEED_FILE.exists():
+        latest_link_html = '<p><a href="/feed/latest-feed.txt" target="_blank">Apri ultimo feed pubblico</a></p>'
 
     return f"""
     <h1>ADMIN APP</h1>
@@ -218,7 +219,7 @@ def admin_home():
         <button type="submit">Genera feed</button>
     </form>
 
-    <p><a href="/feed/trovaprezzi.txt" target="_blank">Apri feed pubblico</a></p>
+    {latest_link_html}
     """
 
 
@@ -286,17 +287,15 @@ def generate_feed():
     price_mins = request.args.getlist("price_min")
     price_maxs = request.args.getlist("price_max")
 
-    # pulizia valori
     price_mins = [p.strip() for p in price_mins]
     price_maxs = [p.strip() for p in price_maxs]
 
-    # validazione prezzi
     for i in range(max(len(price_mins), len(price_maxs))):
         min_val = price_mins[i] if i < len(price_mins) else ""
         max_val = price_maxs[i] if i < len(price_maxs) else ""
 
         if not is_valid_price_input(min_val) or not is_valid_price_input(max_val):
-            return f"""
+            return """
             <h2>Errore input prezzo</h2>
             <p>Hai inserito un formato prezzo non valido.</p>
             <p>Formato corretto:</p>
@@ -352,7 +351,12 @@ def generate_feed():
     products = get_products(token=token, first=100, search_query=search_query)
     feed = build_feed(products, filters=active_filters)
 
-    OUTPUT_FILE.write_text(feed, encoding="utf-8")
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    filename = f"trovaprezzi-feed-{timestamp}.txt"
+    file_path = BASE_DIR / filename
+
+    file_path.write_text(feed, encoding="utf-8")
+    LAST_FEED_FILE.write_text(feed, encoding="utf-8")
 
     brand_text = ", ".join(filters["brand"]) if filters["use_brand"] and filters["brand"] else "NO"
     collection_text = ", ".join(filters["collection"]) if filters["use_collection"] and filters["collection"] else "NO"
@@ -388,17 +392,20 @@ def generate_feed():
     <p>Lead time minimo usato: {escape(lead_time_min_text)}</p>
     <p>Lead time massimo usato: {escape(lead_time_max_text)}</p>
     <p>Range prezzo usati: {escape(price_ranges_text)}</p>
-    <p><a href="/feed/trovaprezzi.txt" target="_blank">Apri feed pubblico</a></p>
+    <p><a href="/feed/{filename}" target="_blank">Apri feed pubblico di questa generazione</a></p>
+    <p><a href="/feed/latest-feed.txt" target="_blank">Apri ultimo feed pubblico</a></p>
     <p><a href="/">Torna indietro</a></p>
     """
 
 
-@app.route("/feed/trovaprezzi.txt")
-def public_feed():
-    if not OUTPUT_FILE.exists():
-        abort(404, description="Feed non ancora generato")
+@app.route("/feed/<filename>")
+def public_feed(filename):
+    file_path = BASE_DIR / filename
 
-    content = OUTPUT_FILE.read_text(encoding="utf-8")
+    if not file_path.exists():
+        abort(404, description="Feed non trovato")
+
+    content = file_path.read_text(encoding="utf-8")
     return content, 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 
