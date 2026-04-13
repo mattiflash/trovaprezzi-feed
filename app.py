@@ -1,7 +1,6 @@
 from pathlib import Path
 from flask import Flask, abort, request
 from markupsafe import escape
-import time
 import re
 from datetime import datetime
 
@@ -13,113 +12,24 @@ app = Flask(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 LAST_FEED_FILE = BASE_DIR / "latest-feed.txt"
 
-FILTER_CACHE = {
-    "timestamp": 0,
-    "brands": [],
-    "collections": []
-}
-FILTER_CACHE_TTL = 600  # 10 minuti
-
 
 def is_valid_price_input(value):
     if not value:
         return True
 
     value = value.strip()
+
+    # accetta:
+    # 99,99
+    # 99.99
+    # 1.299,99
+    # 1299
     pattern = r"^\d{1,3}([.,]?\d{3})*([.,]\d{1,2})?$"
     return re.match(pattern, value) is not None
 
 
-def get_filter_options(force_refresh=False):
-    now = time.time()
-
-    if (
-        not force_refresh
-        and FILTER_CACHE["brands"]
-        and FILTER_CACHE["collections"]
-        and (now - FILTER_CACHE["timestamp"] < FILTER_CACHE_TTL)
-    ):
-        return FILTER_CACHE["brands"], FILTER_CACHE["collections"]
-
-    token = get_token()
-    products = get_products(token=token, first=40, search_query="status:ACTIVE")
-
-    brands = set()
-    collections = {}
-
-    for edge in products:
-        p = edge["node"]
-
-        vendor = (p.get("vendor") or "").strip()
-        if vendor:
-            brands.add(vendor)
-
-        for c in p.get("collections", {}).get("edges", []):
-            node = c.get("node", {})
-            title = (node.get("title") or "").strip()
-            handle = (node.get("handle") or "").strip()
-
-            if title and handle:
-                collections[title] = handle
-
-    sorted_brands = sorted(brands, key=lambda x: x.lower())
-    sorted_collections = sorted(collections.items(), key=lambda x: x[0].lower())
-
-    FILTER_CACHE["timestamp"] = now
-    FILTER_CACHE["brands"] = sorted_brands
-    FILTER_CACHE["collections"] = sorted_collections
-
-    return sorted_brands, sorted_collections
-
-
 @app.route("/", methods=["GET"])
 def admin_home():
-    brands = FILTER_CACHE["brands"]
-    collections = FILTER_CACHE["collections"]
-
-    loaded = bool(brands or collections)
-
-    status_html = ""
-    if not loaded:
-        status_html = """
-        <p style="color:#b00; font-weight:bold;">
-            Brand e collezioni non sono ancora caricati.
-        </p>
-        <p>
-            Premi il pulsante qui sotto per caricarli da Shopify.
-        </p>
-        """
-    else:
-        status_html = """
-        <p style="color:green; font-weight:bold;">
-            Brand e collezioni caricati correttamente.
-        </p>
-        """
-
-    brand_checkboxes = "".join(
-        f"""
-        <div>
-            <label>
-                <input type="checkbox" name="brand" value="{escape(brand)}">
-                {escape(brand)}
-            </label>
-        </div>
-        """
-        for brand in brands
-    )
-
-    collection_checkboxes = "".join(
-        f"""
-        <div>
-            <label>
-                <input type="checkbox" name="collection" value="{escape(title)}">
-                {escape(title)} ({escape(handle)})
-            </label>
-        </div>
-        """
-        for title, handle in collections
-    )
-
     latest_link_html = ""
     if LAST_FEED_FILE.exists():
         latest_link_html = """
@@ -133,12 +43,8 @@ def admin_home():
     return f"""
     <h1>ADMIN APP</h1>
 
-    {status_html}
-
-    <p>
-        <a href="/admin/carica-filtri">
-            <button type="button">Carica brand e collezioni da Shopify</button>
-        </a>
+    <p style="font-weight:bold;">
+        Inserisci manualmente brand e collezioni separati da virgola.
     </p>
 
     <form action="/admin/genera-feed" method="get">
@@ -148,9 +54,15 @@ def admin_home():
                 Usa brand
             </label>
             <br>
-            <div style="max-height:220px; overflow:auto; border:1px solid #ccc; padding:10px; margin-top:8px;">
-                {brand_checkboxes}
-            </div>
+            <input
+                type="text"
+                name="brand_manual"
+                placeholder="Es. Nikon, Canon, Godox"
+                style="width:420px;"
+            >
+            <p style="font-size:12px; color:#666;">
+                Inserisci uno o più brand separati da virgola
+            </p>
         </div>
 
         <br>
@@ -161,9 +73,15 @@ def admin_home():
                 Usa collezione
             </label>
             <br>
-            <div style="max-height:220px; overflow:auto; border:1px solid #ccc; padding:10px; margin-top:8px;">
-                {collection_checkboxes}
-            </div>
+            <input
+                type="text"
+                name="collection_manual"
+                placeholder="Es. mirrorless, telescopi, obiettivi-mirrorless"
+                style="width:420px;"
+            >
+            <p style="font-size:12px; color:#666;">
+                Inserisci una o più collezioni separate da virgola
+            </p>
         </div>
 
         <br>
@@ -251,31 +169,6 @@ def admin_home():
     """
 
 
-@app.route("/admin/carica-filtri", methods=["GET"])
-def load_filters():
-    try:
-        brands, collections = get_filter_options(force_refresh=True)
-
-        if not brands and not collections:
-            return """
-            <h2>Caricamento filtri non riuscito</h2>
-            <p>Non sono riuscito a recuperare brand e collezioni da Shopify.</p>
-            <p><a href="/">Torna indietro</a></p>
-            """
-
-        return """
-        <h2>Filtri caricati correttamente</h2>
-        <p>Brand e collezioni sono stati caricati da Shopify.</p>
-        <p><a href="/">Torna alla home</a></p>
-        """
-    except Exception as e:
-        return f"""
-        <h2>Errore caricamento filtri</h2>
-        <p>{escape(str(e))}</p>
-        <p><a href="/">Torna indietro</a></p>
-        """
-
-
 @app.route("/admin/verifica-collezioni", methods=["GET"])
 def verify_collections():
     brand = (request.args.get("brand") or "").strip()
@@ -331,11 +224,11 @@ def verify_collections():
 def generate_feed():
     filters = DEFAULT_FILTERS.copy()
 
-    selected_brands = request.args.getlist("brand")
-    selected_brands = [b.strip() for b in selected_brands if b.strip()]
+    brand_manual = (request.args.get("brand_manual") or "").strip()
+    collection_manual = (request.args.get("collection_manual") or "").strip()
 
-    selected_collections = request.args.getlist("collection")
-    selected_collections = [c.strip() for c in selected_collections if c.strip()]
+    selected_brands = [b.strip() for b in brand_manual.split(",") if b.strip()]
+    selected_collections = [c.strip() for c in collection_manual.split(",") if c.strip()]
 
     price_mins = request.args.getlist("price_min")
     price_maxs = request.args.getlist("price_max")
@@ -445,8 +338,19 @@ def generate_feed():
     <p>Lead time minimo usato: {escape(lead_time_min_text)}</p>
     <p>Lead time massimo usato: {escape(lead_time_max_text)}</p>
     <p>Range prezzo usati: {escape(price_ranges_text)}</p>
-    <p><a href="/feed/{filename}" target="_blank">Apri feed specifico di questa generazione</a></p>
-    <p><a href="/feed/latest-feed.txt" target="_blank">Apri link fisso sempre aggiornato</a></p>
+
+    <p>
+        <a href="/feed/{filename}" target="_blank">
+            Apri feed specifico di questa generazione
+        </a>
+    </p>
+
+    <p>
+        <a href="/feed/latest-feed.txt" target="_blank">
+            Apri link fisso sempre aggiornato
+        </a>
+    </p>
+
     <p><a href="/">Torna indietro</a></p>
     """
 
