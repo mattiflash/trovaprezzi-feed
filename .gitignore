@@ -4,3 +4,5 @@ __pycache__/
 trovaprezzi-feed.txt
 .venv/
 venv/
+feed.txt
+trovaprezzi-test.txt
