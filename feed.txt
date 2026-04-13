@@ -1,1 +1,0 @@
-Nome|Prezzo Vendita|Codice Interno|Link all’offerta|Albero Categorie|Link Immagine|Spese di Spedizione <endrecord>
