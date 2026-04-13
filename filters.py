@@ -39,10 +39,8 @@ def parse_price(value):
     if value == "":
         return None
 
-    # rimuove spazi
     value = value.replace(" ", "")
 
-    # caso europeo: 1.299,99
     if "," in value and "." in value:
         if value.find(",") > value.find("."):
             value = value.replace(".", "").replace(",", ".")
@@ -62,14 +60,14 @@ def matches_filters(product, variant, filters):
     # BRAND
     # -------------------------
     brand_filters = filters.get("brand", [])
+    allowed_brands = [
+        _clean(b).lower()
+        for b in brand_filters
+        if isinstance(b, str) and _clean(b)
+    ]
 
-    if brand_filters:
+    if allowed_brands:
         product_brand = _clean(product.get("vendor")).lower()
-        allowed_brands = [
-            _clean(b).lower()
-            for b in brand_filters
-            if isinstance(b, str) and _clean(b)
-        ]
 
         if product_brand not in allowed_brands:
             return False
@@ -78,14 +76,13 @@ def matches_filters(product, variant, filters):
     # COLLECTION
     # -------------------------
     collection_filters = filters.get("collection", [])
+    allowed_collections = [
+        _clean(c).lower()
+        for c in collection_filters
+        if isinstance(c, str) and _clean(c)
+    ]
 
-    if collection_filters:
-        allowed_collections = [
-            _clean(c).lower()
-            for c in collection_filters
-            if isinstance(c, str) and _clean(c)
-        ]
-
+    if allowed_collections:
         matched = False
 
         for c in product.get("collections", {}).get("edges", []):
@@ -150,14 +147,12 @@ def matches_filters(product, variant, filters):
             min_raw = _clean(min_raw)
             max_raw = _clean(max_raw)
 
-            # ignora righe completamente vuote
             if min_raw == "" and max_raw == "":
                 continue
 
             min_val = parse_price(min_raw) if min_raw != "" else None
             max_val = parse_price(max_raw) if max_raw != "" else None
 
-            # se uno dei due valori è stato scritto male, salta quel range
             if min_raw != "" and min_val is None:
                 continue
             if max_raw != "" and max_val is None:
@@ -165,7 +160,6 @@ def matches_filters(product, variant, filters):
 
             valid_ranges.append((min_val, max_val))
 
-        # se il filtro è attivo ma non hai range validi, escludi
         if not valid_ranges:
             return False
 
