@@ -13,7 +13,6 @@ app = Flask(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 LAST_FEED_FILE = BASE_DIR / "latest-feed.txt"
 
-# Cache semplice in memoria per evitare di rileggere Shopify a ogni refresh
 FILTER_CACHE = {
     "timestamp": 0,
     "brands": [],
@@ -27,79 +26,76 @@ def is_valid_price_input(value):
         return True
 
     value = value.strip()
-
-    # accetta:
-    # 99,99
-    # 99.99
-    # 1.299,99
-    # 1299
     pattern = r"^\d{1,3}([.,]?\d{3})*([.,]\d{1,2})?$"
     return re.match(pattern, value) is not None
 
 
-def get_filter_options():
-    """
-    Recupera brand e collezioni da Shopify con una sola lettura.
-    Usa una cache semplice per velocizzare l'apertura della home.
-    Se Shopify è lento o non risponde, ritorna liste vuote.
-    """
+def get_filter_options(force_refresh=False):
     now = time.time()
 
     if (
-        FILTER_CACHE["brands"]
+        not force_refresh
+        and FILTER_CACHE["brands"]
         and FILTER_CACHE["collections"]
         and (now - FILTER_CACHE["timestamp"] < FILTER_CACHE_TTL)
     ):
         return FILTER_CACHE["brands"], FILTER_CACHE["collections"]
 
-    try:
-        token = get_token()
-        products = get_products(token=token, first=40, search_query="status:ACTIVE")
+    token = get_token()
+    products = get_products(token=token, first=40, search_query="status:ACTIVE")
 
-        brands = set()
-        collections = {}
+    brands = set()
+    collections = {}
 
-        for edge in products:
-            p = edge["node"]
+    for edge in products:
+        p = edge["node"]
 
-            vendor = (p.get("vendor") or "").strip()
-            if vendor:
-                brands.add(vendor)
+        vendor = (p.get("vendor") or "").strip()
+        if vendor:
+            brands.add(vendor)
 
-            for c in p.get("collections", {}).get("edges", []):
-                node = c.get("node", {})
-                title = (node.get("title") or "").strip()
-                handle = (node.get("handle") or "").strip()
+        for c in p.get("collections", {}).get("edges", []):
+            node = c.get("node", {})
+            title = (node.get("title") or "").strip()
+            handle = (node.get("handle") or "").strip()
 
-                if title and handle:
-                    collections[title] = handle
+            if title and handle:
+                collections[title] = handle
 
-        sorted_brands = sorted(brands, key=lambda x: x.lower())
-        sorted_collections = sorted(collections.items(), key=lambda x: x[0].lower())
+    sorted_brands = sorted(brands, key=lambda x: x.lower())
+    sorted_collections = sorted(collections.items(), key=lambda x: x[0].lower())
 
-        FILTER_CACHE["timestamp"] = now
-        FILTER_CACHE["brands"] = sorted_brands
-        FILTER_CACHE["collections"] = sorted_collections
+    FILTER_CACHE["timestamp"] = now
+    FILTER_CACHE["brands"] = sorted_brands
+    FILTER_CACHE["collections"] = sorted_collections
 
-        return sorted_brands, sorted_collections
-
-    except Exception as e:
-        print(f"Errore caricamento filtri Shopify: {e}")
-        return [], []
+    return sorted_brands, sorted_collections
 
 
 @app.route("/", methods=["GET"])
 def admin_home():
-    brands, collections = get_filter_options()
+    brands = FILTER_CACHE["brands"]
+    collections = FILTER_CACHE["collections"]
 
-    warning_html = ""
-    if not brands and not collections:
-        warning_html = """
+    loaded = bool(brands or collections)
+
+    status_html = ""
+    if not loaded:
+        status_html = """
         <p style="color:#b00; font-weight:bold;">
-            Attenzione: non sono riuscito a caricare brand e collezioni da Shopify in questo momento.
-            Puoi ricaricare la pagina o procedere con filtri manuali.
+            Brand e collezioni non sono ancora caricati.
+        </p>
+        <p>
+            Premi il pulsante qui sotto per caricarli da Shopify.
         </p>
         """
+    else:
+        status_html = """
+        <p style="color:green; font-weight:bold;">
+            Brand e collezioni caricati correttamente.
+        </p>
+        """
+
     brand_checkboxes = "".join(
         f"""
         <div>
@@ -126,12 +122,24 @@ def admin_home():
 
     latest_link_html = ""
     if LAST_FEED_FILE.exists():
-        latest_link_html = '<p><a href="/feed/latest-feed.txt" target="_blank">Apri ultimo feed pubblico</a></p>'
+        latest_link_html = """
+        <p>
+            <a href="/feed/latest-feed.txt" target="_blank">
+                Apri link fisso sempre aggiornato
+            </a>
+        </p>
+        """
 
     return f"""
     <h1>ADMIN APP</h1>
 
-    {warning_html}
+    {status_html}
+
+    <p>
+        <a href="/admin/carica-filtri">
+            <button type="button">Carica brand e collezioni da Shopify</button>
+        </a>
+    </p>
 
     <form action="/admin/genera-feed" method="get">
         <div>
@@ -241,6 +249,31 @@ def admin_home():
 
     {latest_link_html}
     """
+
+
+@app.route("/admin/carica-filtri", methods=["GET"])
+def load_filters():
+    try:
+        brands, collections = get_filter_options(force_refresh=True)
+
+        if not brands and not collections:
+            return """
+            <h2>Caricamento filtri non riuscito</h2>
+            <p>Non sono riuscito a recuperare brand e collezioni da Shopify.</p>
+            <p><a href="/">Torna indietro</a></p>
+            """
+
+        return """
+        <h2>Filtri caricati correttamente</h2>
+        <p>Brand e collezioni sono stati caricati da Shopify.</p>
+        <p><a href="/">Torna alla home</a></p>
+        """
+    except Exception as e:
+        return f"""
+        <h2>Errore caricamento filtri</h2>
+        <p>{escape(str(e))}</p>
+        <p><a href="/">Torna indietro</a></p>
+        """
 
 
 @app.route("/admin/verifica-collezioni", methods=["GET"])
@@ -412,8 +445,8 @@ def generate_feed():
     <p>Lead time minimo usato: {escape(lead_time_min_text)}</p>
     <p>Lead time massimo usato: {escape(lead_time_max_text)}</p>
     <p>Range prezzo usati: {escape(price_ranges_text)}</p>
-    <p><a href="/feed/{filename}" target="_blank">Apri feed appena generato</a></p>
-    <p><a href="/feed/latest-feed.txt" target="_blank">Apri ultimo feed pubblico</a></p>
+    <p><a href="/feed/{filename}" target="_blank">Apri feed specifico di questa generazione</a></p>
+    <p><a href="/feed/latest-feed.txt" target="_blank">Apri link fisso sempre aggiornato</a></p>
     <p><a href="/">Torna indietro</a></p>
     """
 
