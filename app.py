@@ -38,6 +38,11 @@ def is_valid_price_input(value):
 
 
 def get_filter_options():
+    """
+    Recupera brand e collezioni da Shopify con una sola lettura.
+    Usa una cache semplice per velocizzare l'apertura della home.
+    Se Shopify è lento o non risponde, ritorna liste vuote.
+    """
     now = time.time()
 
     if (
@@ -47,41 +52,54 @@ def get_filter_options():
     ):
         return FILTER_CACHE["brands"], FILTER_CACHE["collections"]
 
-    token = get_token()
-    products = get_products(token=token, first=100, search_query="status:ACTIVE")
+    try:
+        token = get_token()
+        products = get_products(token=token, first=40, search_query="status:ACTIVE")
 
-    brands = set()
-    collections = {}
+        brands = set()
+        collections = {}
 
-    for edge in products:
-        p = edge["node"]
+        for edge in products:
+            p = edge["node"]
 
-        vendor = (p.get("vendor") or "").strip()
-        if vendor:
-            brands.add(vendor)
+            vendor = (p.get("vendor") or "").strip()
+            if vendor:
+                brands.add(vendor)
 
-        for c in p.get("collections", {}).get("edges", []):
-            node = c.get("node", {})
-            title = (node.get("title") or "").strip()
-            handle = (node.get("handle") or "").strip()
+            for c in p.get("collections", {}).get("edges", []):
+                node = c.get("node", {})
+                title = (node.get("title") or "").strip()
+                handle = (node.get("handle") or "").strip()
 
-            if title and handle:
-                collections[title] = handle
+                if title and handle:
+                    collections[title] = handle
 
-    sorted_brands = sorted(brands, key=lambda x: x.lower())
-    sorted_collections = sorted(collections.items(), key=lambda x: x[0].lower())
+        sorted_brands = sorted(brands, key=lambda x: x.lower())
+        sorted_collections = sorted(collections.items(), key=lambda x: x[0].lower())
 
-    FILTER_CACHE["timestamp"] = now
-    FILTER_CACHE["brands"] = sorted_brands
-    FILTER_CACHE["collections"] = sorted_collections
+        FILTER_CACHE["timestamp"] = now
+        FILTER_CACHE["brands"] = sorted_brands
+        FILTER_CACHE["collections"] = sorted_collections
 
-    return sorted_brands, sorted_collections
+        return sorted_brands, sorted_collections
+
+    except Exception as e:
+        print(f"Errore caricamento filtri Shopify: {e}")
+        return [], []
 
 
 @app.route("/", methods=["GET"])
 def admin_home():
     brands, collections = get_filter_options()
 
+    warning_html = ""
+    if not brands and not collections:
+            warning_html = """
+        <p style="color:#b00; font-weight:bold;">
+            Attenzione: non sono riuscito a caricare brand e collezioni da Shopify in questo momento.
+            Puoi ricaricare la pagina o procedere con filtri manuali.
+        </p>
+        """
     brand_checkboxes = "".join(
         f"""
         <div>
@@ -112,6 +130,8 @@ def admin_home():
 
     return f"""
     <h1>ADMIN APP</h1>
+
+    {warning_html}
 
     <form action="/admin/genera-feed" method="get">
         <div>
