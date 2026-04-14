@@ -12,7 +12,7 @@ DEFAULT_FILTERS = {
     "price_max": [],
 
     "use_availability": False,
-    "availability": "",
+    "availability": [],
 
     "use_lead_time": False,
     "lead_time_min": "",

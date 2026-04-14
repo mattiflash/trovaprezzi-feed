@@ -103,9 +103,18 @@ def matches_filters(product, variant, filters):
     # 1 = limitata
     # >1 = disponibile
     # -------------------------
-    availability_filter = _clean(filters.get("availability")).lower()
+    availability_filters = filters.get("availability", [])
 
-    if availability_filter:
+    if not isinstance(availability_filters, list):
+        availability_filters = [availability_filters]
+
+    availability_filters = [
+        _clean(a).lower()
+        for a in availability_filters
+        if _clean(a)
+    ]
+
+    if availability_filters:
         qty = variant.get("inventoryQuantity")
         qty = 0 if qty is None else qty
 
@@ -116,7 +125,7 @@ def matches_filters(product, variant, filters):
         else:
             current_availability = "non disponibile"
 
-        if availability_filter != current_availability:
+        if current_availability not in availability_filters:
             return False
 
     # -------------------------
