@@ -94,153 +94,168 @@ def admin_home():
     except Exception as e:
         brands, collections = [], []
         filters_warning = f"""
-        <p style="color:#b00; font-weight:bold;">
+        <div style="background:#ffeaea; border:1px solid #d99; color:#900; padding:12px; border-radius:8px; margin-bottom:16px;">
             Errore nel caricamento: {escape(str(e))}
-        </p>
+        </div>
         """
 
     latest_link_html = ""
     if LAST_FEED_FILE.exists():
         latest_link_html = """
-        <p>
-            <a href="/feed/latest-feed.txt" target="_blank">
+        <div style="margin-top:18px;">
+            <a href="/feed/latest-feed.txt" target="_blank"
+               style="display:inline-block; padding:10px 14px; background:#f3f4f6; border:1px solid #d1d5db; border-radius:8px; text-decoration:none; color:#111827; font-weight:600;">
                 Apri link fisso sempre aggiornato
             </a>
-        </p>
+        </div>
         """
 
-    # 🔥 CHECKBOX BRAND
     brand_checkboxes = "".join(
         f"""
-        <label style="display:block;">
+        <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
             <input type="checkbox" name="brand" value="{escape(brand)}">
-            {escape(brand)}
+            <span>{escape(brand)}</span>
         </label>
         """
         for brand in brands
     )
 
-    # 🔥 CHECKBOX COLLEZIONI
     collection_checkboxes = "".join(
         f"""
-        <label style="display:block;">
+        <label style="display:flex; align-items:center; gap:8px; margin:4px 0;">
             <input type="checkbox" name="collection" value="{escape(title)}">
-            {escape(title)}
+            <span>{escape(title)}</span>
         </label>
         """
         for title, handle in collections
     )
 
     return f"""
-    <h1>ADMIN APP</h1>
+    <div style="max-width:1100px; margin:30px auto; font-family:Arial, sans-serif; color:#111827;">
+        <h1 style="margin-bottom:20px;">ADMIN APP</h1>
 
-    {filters_warning}
+        {filters_warning}
 
-    <form action="/admin/genera-feed" method="get">
+        <form action="/admin/genera-feed" method="get">
 
-        <!-- BRAND -->
-        <div>
-            <label>
-                <input type="checkbox" name="use_brand" value="1">
-                Usa brand
-            </label>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start;">
 
-            <div style="max-height:200px; overflow:auto; border:1px solid #ccc; padding:10px;">
-                {brand_checkboxes}
-            </div>
-        </div>
+                <!-- BRAND -->
+                <div style="border:1px solid #d1d5db; border-radius:10px; padding:16px; background:#fff;">
+                    <label style="font-weight:700; display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                        <input type="checkbox" name="use_brand" value="1">
+                        <span>Usa brand</span>
+                    </label>
 
-        <br>
+                    <div style="max-height:280px; overflow:auto; border:1px solid #e5e7eb; border-radius:8px; padding:10px; background:#fafafa;">
+                        {brand_checkboxes}
+                    </div>
+                </div>
 
-        <!-- COLLECTION -->
-        <div>
-            <label>
-                <input type="checkbox" name="use_collection" value="1">
-                Usa collezione
-            </label>
+                <!-- COLLECTION -->
+                <div style="border:1px solid #d1d5db; border-radius:10px; padding:16px; background:#fff;">
+                    <label style="font-weight:700; display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                        <input type="checkbox" name="use_collection" value="1">
+                        <span>Usa collezione</span>
+                    </label>
 
-            <div style="max-height:200px; overflow:auto; border:1px solid #ccc; padding:10px;">
-                {collection_checkboxes}
-            </div>
-        </div>
-
-        <br>
-
-        <!-- AVAILABILITY -->
-        <div>
-            <label>
-                <input type="checkbox" name="use_availability" value="1">
-                Usa disponibilità
-            </label>
-
-            <label style="display:block;">
-                <input type="checkbox" name="availability" value="non disponibile">
-                non disponibile
-            </label>
-
-            <label style="display:block;">
-                <input type="checkbox" name="availability" value="limitata">
-                limitata
-            </label>
-
-            <label style="display:block;">
-                <input type="checkbox" name="availability" value="disponibile">
-                disponibile
-            </label>
-        </div>
-
-        <br>
-
-        <!-- LEAD TIME -->
-        <div>
-            <label>
-                <input type="checkbox" name="use_lead_time" value="1">
-                Usa lead time
-            </label>
-
-            <br><br>
-
-            <input type="number" name="lead_time_min" placeholder="min">
-            <input type="number" name="lead_time_max" placeholder="max">
-        </div>
-
-        <br>
-
-        <!-- PREZZI -->
-        <div>
-            <label>
-                <input type="checkbox" name="use_price_ranges" value="1">
-                Usa prezzo
-            </label>
-
-            <div id="price-ranges">
-                <div>
-                    <input type="text" name="price_min" placeholder="min">
-                    <input type="text" name="price_max" placeholder="max">
+                    <div style="max-height:280px; overflow:auto; border:1px solid #e5e7eb; border-radius:8px; padding:10px; background:#fafafa;">
+                        {collection_checkboxes}
+                    </div>
                 </div>
             </div>
 
-            <button type="button" onclick="addRange()">+</button>
-        </div>
+            <div style="margin-top:20px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; align-items:start;">
 
-        <script>
-        function addRange() {{
-            const div = document.createElement('div');
-            div.innerHTML = `
-                <input type="text" name="price_min" placeholder="min">
-                <input type="text" name="price_max" placeholder="max">
-                <button onclick="this.parentElement.remove()">x</button>
-            `;
-            document.getElementById('price-ranges').appendChild(div);
-        }}
-        </script>
+                <!-- AVAILABILITY -->
+                <div style="border:1px solid #d1d5db; border-radius:10px; padding:16px; background:#fff;">
+                    <label style="font-weight:700; display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                        <input type="checkbox" name="use_availability" value="1">
+                        <span>Usa disponibilità</span>
+                    </label>
 
-        <br><br>
+                    <label style="display:flex; align-items:center; gap:8px; margin:6px 0;">
+                        <input type="checkbox" name="availability" value="non disponibile">
+                        <span>Non disponibile</span>
+                    </label>
 
-        <button type="submit">Genera feed</button>
-    </form>
+                    <label style="display:flex; align-items:center; gap:8px; margin:6px 0;">
+                        <input type="checkbox" name="availability" value="limitata">
+                        <span>Limitata</span>
+                    </label>
 
-    {latest_link_html}
+                    <label style="display:flex; align-items:center; gap:8px; margin:6px 0;">
+                        <input type="checkbox" name="availability" value="disponibile">
+                        <span>Disponibile</span>
+                    </label>
+                </div>
+
+                <!-- LEAD TIME -->
+                <div style="border:1px solid #d1d5db; border-radius:10px; padding:16px; background:#fff;">
+                    <label style="font-weight:700; display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                        <input type="checkbox" name="use_lead_time" value="1">
+                        <span>Usa lead time</span>
+                    </label>
+
+                    <div style="display:flex; gap:10px;">
+                        <input type="number" name="lead_time_min" placeholder="min"
+                               style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:8px;">
+                        <input type="number" name="lead_time_max" placeholder="max"
+                               style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:8px;">
+                    </div>
+                </div>
+
+                <!-- PREZZO -->
+                <div style="border:1px solid #d1d5db; border-radius:10px; padding:16px; background:#fff;">
+                    <label style="font-weight:700; display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                        <input type="checkbox" name="use_price_ranges" value="1">
+                        <span>Usa prezzo</span>
+                    </label>
+
+                    <div id="price-ranges">
+                        <div style="display:flex; gap:10px; margin-bottom:10px;">
+                            <input type="text" name="price_min" placeholder="min"
+                                   style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:8px;">
+                            <input type="text" name="price_max" placeholder="max"
+                                   style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:8px;">
+                        </div>
+                    </div>
+
+                    <button type="button" onclick="addRange()"
+                            style="padding:8px 10px; border:1px solid #d1d5db; background:#f9fafb; border-radius:8px; cursor:pointer;">
+                        + Aggiungi range
+                    </button>
+                </div>
+            </div>
+
+            <script>
+            function addRange() {{
+                const div = document.createElement('div');
+                div.style.display = 'flex';
+                div.style.gap = '10px';
+                div.style.marginBottom = '10px';
+                div.innerHTML = `
+                    <input type="text" name="price_min" placeholder="min"
+                           style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:8px;">
+                    <input type="text" name="price_max" placeholder="max"
+                           style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:8px;">
+                    <button type="button" onclick="this.parentElement.remove()"
+                            style="padding:8px 10px; border:1px solid #d1d5db; background:#fff; border-radius:8px; cursor:pointer;">×</button>
+                `;
+                document.getElementById('price-ranges').appendChild(div);
+            }}
+            </script>
+
+            <div style="margin-top:24px;">
+                <button type="submit"
+                        style="padding:12px 18px; background:#111827; color:white; border:none; border-radius:8px; font-weight:700; cursor:pointer;">
+                    Genera feed
+                </button>
+            </div>
+        </form>
+
+        {latest_link_html}
+    </div>
     """
 
 
