@@ -95,7 +95,7 @@ def admin_home():
         brands, collections = [], []
         filters_warning = f"""
         <p style="color:#b00; font-weight:bold;">
-            Errore nel caricamento di brand e collezioni: {escape(str(e))}
+            Errore nel caricamento: {escape(str(e))}
         </p>
         """
 
@@ -109,13 +109,25 @@ def admin_home():
         </p>
         """
 
-    brand_options = "".join(
-        f'<option value="{escape(brand)}">{escape(brand)}</option>'
+    # 🔥 CHECKBOX BRAND
+    brand_checkboxes = "".join(
+        f"""
+        <label style="display:block;">
+            <input type="checkbox" name="brand" value="{escape(brand)}">
+            {escape(brand)}
+        </label>
+        """
         for brand in brands
     )
 
-    collection_options = "".join(
-        f'<option value="{escape(title)}">{escape(title)} ({escape(handle)})</option>'
+    # 🔥 CHECKBOX COLLEZIONI
+    collection_checkboxes = "".join(
+        f"""
+        <label style="display:block;">
+            <input type="checkbox" name="collection" value="{escape(title)}">
+            {escape(title)}
+        </label>
+        """
         for title, handle in collections
     )
 
@@ -125,115 +137,105 @@ def admin_home():
     {filters_warning}
 
     <form action="/admin/genera-feed" method="get">
+
+        <!-- BRAND -->
         <div>
             <label>
                 <input type="checkbox" name="use_brand" value="1">
                 Usa brand
             </label>
-            <br>
-            <select name="brand" multiple size="10" style="width:420px;">
-                {brand_options}
-            </select>
-            <p style="font-size:12px; color:#666;">
-                Puoi selezionare più brand con CTRL + click
-            </p>
+
+            <div style="max-height:200px; overflow:auto; border:1px solid #ccc; padding:10px;">
+                {brand_checkboxes}
+            </div>
         </div>
 
         <br>
 
+        <!-- COLLECTION -->
         <div>
             <label>
                 <input type="checkbox" name="use_collection" value="1">
                 Usa collezione
             </label>
-            <br>
-            <select name="collection" multiple size="10" style="width:420px;">
-                {collection_options}
-            </select>
-            <p style="font-size:12px; color:#666;">
-                Puoi selezionare più collezioni con CTRL + click
-            </p>
+
+            <div style="max-height:200px; overflow:auto; border:1px solid #ccc; padding:10px;">
+                {collection_checkboxes}
+            </div>
         </div>
 
         <br>
 
+        <!-- AVAILABILITY -->
         <div>
             <label>
                 <input type="checkbox" name="use_availability" value="1">
                 Usa disponibilità
             </label>
-            <br>
-            <select name="availability" multiple size="3" style="width:420px;">
-                <option value="non disponibile">non disponibile (quantità pari a 0)</option>
-                <option value="limitata">limitata (quantità pari a 1)</option>
-                <option value="disponibile">disponibile (quantità superiore a 1)</option>
-            </select>
-            <p style="font-size:12px; color:#666;">
-                Puoi selezionare più stati con CTRL + click
-            </p>
+
+            <label style="display:block;">
+                <input type="checkbox" name="availability" value="non disponibile">
+                non disponibile
+            </label>
+
+            <label style="display:block;">
+                <input type="checkbox" name="availability" value="limitata">
+                limitata
+            </label>
+
+            <label style="display:block;">
+                <input type="checkbox" name="availability" value="disponibile">
+                disponibile
+            </label>
         </div>
 
         <br>
 
+        <!-- LEAD TIME -->
         <div>
             <label>
                 <input type="checkbox" name="use_lead_time" value="1">
-                Usa lead time consegna
+                Usa lead time
             </label>
-            <br><br>
-
-            <label for="lead_time_min">Lead time minimo:</label>
-            <input type="number" name="lead_time_min" min="0" step="1" placeholder="es. 21">
 
             <br><br>
 
-            <label for="lead_time_max">Lead time massimo:</label>
-            <input type="number" name="lead_time_max" min="0" step="1" placeholder="es. 999">
+            <input type="number" name="lead_time_min" placeholder="min">
+            <input type="number" name="lead_time_max" placeholder="max">
         </div>
 
         <br>
 
+        <!-- PREZZI -->
         <div>
             <label>
                 <input type="checkbox" name="use_price_ranges" value="1">
-                Usa range di prezzo
+                Usa prezzo
             </label>
 
-            <div id="price-ranges" style="margin-top:10px;">
-                <div class="price-range-row" style="margin-bottom:10px;">
-                    <label>Prezzo da:</label>
-                    <input type="text" name="price_min" placeholder="es. 99,99">
-
-                    <label style="margin-left:10px;">a:</label>
-                    <input type="text" name="price_max" placeholder="es. 200,00">
+            <div id="price-ranges">
+                <div>
+                    <input type="text" name="price_min" placeholder="min">
+                    <input type="text" name="price_max" placeholder="max">
                 </div>
             </div>
 
-            <button type="button" onclick="addPriceRange()">Aggiungi un altro range di prezzo</button>
+            <button type="button" onclick="addRange()">+</button>
         </div>
 
-        <br>
-
         <script>
-        function addPriceRange() {{
-            const container = document.getElementById('price-ranges');
-            const row = document.createElement('div');
-            row.className = 'price-range-row';
-            row.style.marginBottom = '10px';
-            row.innerHTML = `
-                <label>Prezzo da:</label>
-                <input type="text" name="price_min" placeholder="es. 99,99">
-
-                <label style="margin-left:10px;">a:</label>
-                <input type="text" name="price_max" placeholder="es. 200,00">
-
-                <button type="button" onclick="this.parentElement.remove()" style="margin-left:10px;">Rimuovi</button>
+        function addRange() {{
+            const div = document.createElement('div');
+            div.innerHTML = `
+                <input type="text" name="price_min" placeholder="min">
+                <input type="text" name="price_max" placeholder="max">
+                <button onclick="this.parentElement.remove()">x</button>
             `;
-            container.appendChild(row);
+            document.getElementById('price-ranges').appendChild(div);
         }}
         </script>
 
-        <br>
+        <br><br>
 
         <button type="submit">Genera feed</button>
     </form>
