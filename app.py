@@ -2,6 +2,7 @@ from pathlib import Path
 from flask import Flask, abort, request
 from markupsafe import escape
 import re
+import time
 from datetime import datetime
 
 from feed_exporter import get_token, get_products, build_shopify_query, build_feed
@@ -11,6 +12,13 @@ app = Flask(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 LAST_FEED_FILE = BASE_DIR / "latest-feed.txt"
+
+FILTER_CACHE = {
+    "timestamp": 0,
+    "brands": [],
+    "collections": [],
+}
+FILTER_CACHE_TTL = 600  # 10 minuti
 
 
 def is_valid_price_input(value):
@@ -28,8 +36,69 @@ def is_valid_price_input(value):
     return re.match(pattern, value) is not None
 
 
+def get_filter_options(force_refresh=False):
+    now = time.time()
+
+    if (
+        not force_refresh
+        and FILTER_CACHE["brands"]
+        and FILTER_CACHE["collections"]
+        and (now - FILTER_CACHE["timestamp"] < FILTER_CACHE_TTL)
+    ):
+        return FILTER_CACHE["brands"], FILTER_CACHE["collections"]
+
+    token = get_token()
+
+    # IMPORTANTE:
+    # get_products in feed_exporter.py usa la paginazione, quindi con first=100
+    # prende tutti i prodotti a blocchi da 100, non solo 100 prodotti totali.
+    products = get_products(token=token, first=100, search_query="status:ACTIVE")
+
+    brands_map = {}
+    collections_map = {}
+
+    for edge in products:
+        p = edge["node"]
+
+        vendor = (p.get("vendor") or "").strip()
+        if vendor:
+            key = vendor.lower()
+            if key not in brands_map:
+                brands_map[key] = vendor
+
+        for c in p.get("collections", {}).get("edges", []):
+            node = c.get("node", {})
+            title = (node.get("title") or "").strip()
+            handle = (node.get("handle") or "").strip()
+
+            if title and handle:
+                key = handle.lower()
+                if key not in collections_map:
+                    collections_map[key] = (title, handle)
+
+    sorted_brands = sorted(brands_map.values(), key=lambda x: x.lower())
+    sorted_collections = sorted(collections_map.values(), key=lambda x: x[0].lower())
+
+    FILTER_CACHE["timestamp"] = now
+    FILTER_CACHE["brands"] = sorted_brands
+    FILTER_CACHE["collections"] = sorted_collections
+
+    return sorted_brands, sorted_collections
+
+
 @app.route("/", methods=["GET"])
 def admin_home():
+    try:
+        brands, collections = get_filter_options()
+        filters_warning = ""
+    except Exception as e:
+        brands, collections = [], []
+        filters_warning = f"""
+        <p style="color:#b00; font-weight:bold;">
+            Errore nel caricamento di brand e collezioni: {escape(str(e))}
+        </p>
+        """
+
     latest_link_html = ""
     if LAST_FEED_FILE.exists():
         latest_link_html = """
@@ -40,12 +109,20 @@ def admin_home():
         </p>
         """
 
+    brand_options = "".join(
+        f'<option value="{escape(brand)}">{escape(brand)}</option>'
+        for brand in brands
+    )
+
+    collection_options = "".join(
+        f'<option value="{escape(title)}">{escape(title)} ({escape(handle)})</option>'
+        for title, handle in collections
+    )
+
     return f"""
     <h1>ADMIN APP</h1>
 
-    <p style="font-weight:bold;">
-        Inserisci manualmente brand e collezioni separati da virgola.
-    </p>
+    {filters_warning}
 
     <form action="/admin/genera-feed" method="get">
         <div>
@@ -54,14 +131,11 @@ def admin_home():
                 Usa brand
             </label>
             <br>
-            <input
-                type="text"
-                name="brand_manual"
-                placeholder="Es. Nikon, Canon, Godox"
-                style="width:420px;"
-            >
+            <select name="brand" multiple size="10" style="width:420px;">
+                {brand_options}
+            </select>
             <p style="font-size:12px; color:#666;">
-                Inserisci uno o più brand separati da virgola
+                Puoi selezionare più brand con CTRL + click
             </p>
         </div>
 
@@ -73,14 +147,11 @@ def admin_home():
                 Usa collezione
             </label>
             <br>
-            <input
-                type="text"
-                name="collection_manual"
-                placeholder="Es. mirrorless, telescopi, obiettivi-mirrorless"
-                style="width:420px;"
-            >
+            <select name="collection" multiple size="10" style="width:420px;">
+                {collection_options}
+            </select>
             <p style="font-size:12px; color:#666;">
-                Inserisci una o più collezioni separate da virgola
+                Puoi selezionare più collezioni con CTRL + click
             </p>
         </div>
 
@@ -92,12 +163,14 @@ def admin_home():
                 Usa disponibilità
             </label>
             <br>
-            <select name="availability">
-                <option value="">-- Seleziona disponibilità --</option>
+            <select name="availability" multiple size="3" style="width:420px;">
                 <option value="non disponibile">non disponibile (quantità pari a 0)</option>
                 <option value="limitata">limitata (quantità pari a 1)</option>
                 <option value="disponibile">disponibile (quantità superiore a 1)</option>
             </select>
+            <p style="font-size:12px; color:#666;">
+                Puoi selezionare più stati con CTRL + click
+            </p>
         </div>
 
         <br>
@@ -224,11 +297,14 @@ def verify_collections():
 def generate_feed():
     filters = DEFAULT_FILTERS.copy()
 
-    brand_manual = (request.args.get("brand_manual") or "").strip()
-    collection_manual = (request.args.get("collection_manual") or "").strip()
+    selected_brands = request.args.getlist("brand")
+    selected_brands = [b.strip() for b in selected_brands if b.strip()]
 
-    selected_brands = [b.strip() for b in brand_manual.split(",") if b.strip()]
-    selected_collections = [c.strip() for c in collection_manual.split(",") if c.strip()]
+    selected_collections = request.args.getlist("collection")
+    selected_collections = [c.strip() for c in selected_collections if c.strip()]
+
+    selected_availability = request.args.getlist("availability")
+    selected_availability = [a.strip() for a in selected_availability if a.strip()]
 
     price_mins = request.args.getlist("price_min")
     price_maxs = request.args.getlist("price_max")
@@ -261,7 +337,7 @@ def generate_feed():
     filters["collection"] = selected_collections
 
     filters["use_availability"] = request.args.get("use_availability") == "1"
-    filters["availability"] = (request.args.get("availability") or "").strip()
+    filters["availability"] = selected_availability
 
     filters["use_lead_time"] = request.args.get("use_lead_time") == "1"
     filters["lead_time_min"] = (request.args.get("lead_time_min") or "").strip()
@@ -306,7 +382,7 @@ def generate_feed():
 
     brand_text = ", ".join(filters["brand"]) if filters["use_brand"] and filters["brand"] else "NO"
     collection_text = ", ".join(filters["collection"]) if filters["use_collection"] and filters["collection"] else "NO"
-    availability_text = filters["availability"] if filters["use_availability"] and filters["availability"] else "NO"
+    availability_text = ", ".join(filters["availability"]) if filters["use_availability"] and filters["availability"] else "NO"
     lead_time_min_text = filters["lead_time_min"] if filters["use_lead_time"] and filters["lead_time_min"] else "NO"
     lead_time_max_text = filters["lead_time_max"] if filters["use_lead_time"] and filters["lead_time_max"] else "NO"
 
